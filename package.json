@@ -1,0 +1,52 @@
+{
+  "name": "espace-uniswap-lib",
+  "version": "0.1.0",
+  "description": "Reusable Uniswap V2/V3 helper library for Conflux eSpace",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./consts": "./src/consts.js",
+    "./abis": "./src/abis.js",
+    "./config": "./src/config.js"
+  },
+  "scripts": {
+    "test": "node --test",
+    "example:v2": "node example/uniswapv2-swap.js",
+    "example:v3": "node example/uniswapv3-swap.js"
+  },
+  "keywords": [
+    "uniswap",
+    "conflux",
+    "espace",
+    "dex"
+  ],
+  "license": "ISC",
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@ethersproject/address": "^5.8.0",
+    "@ethersproject/solidity": "^5.8.0",
+    "@uniswap/sdk-core": "7.10.1",
+    "@uniswap/v2-sdk": "4.17.0",
+    "@uniswap/v3-core": "^1.0.1",
+    "@uniswap/v3-periphery": "^1.4.4",
+    "@uniswap/v3-sdk": "3.27.0",
+    "ethers": "5.7.2",
+    "jsbi": "3.2.5",
+    "v-swap-smart-order-router": "3.12.1",
+    "viem": "2.44.4"
+  },
+  "pnpm": {
+    "overrides": {
+      "@uniswap/sdk-core": "7.10.1",
+      "@uniswap/v2-sdk": "4.17.0",
+      "@uniswap/v3-sdk": "3.27.0",
+      "@uniswap/v4-sdk": "1.25.5",
+      "v-swap-smart-order-router": "3.12.1",
+      "viem": "2.44.4",
+      "v-swap-smart-order-router>@uniswap/v2-sdk": "3.0.1"
+    }
+  }
+}
