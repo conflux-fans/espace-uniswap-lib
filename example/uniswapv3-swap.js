@@ -27,7 +27,8 @@ async function main() {
     client.tokens.WCFX9,
     client.tokens.USDT0,
     amountInRaw,
-    signer
+    signer,
+    { slippageBps: 100 }
   );
 
   console.log("network:", client.network);

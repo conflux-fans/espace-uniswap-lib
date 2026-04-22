@@ -3,7 +3,7 @@ import { ethers } from "ethers";
 import { PairABI, Router02ABI, FactoryABI } from "./abis.js";
 import { isWETH, getAllPaths } from "./consts.js";
 import { computePairAddress, erc20Contract, deadline, formatEther, formatUnits } from "./utils.js";
-import { log, assertSignerMatchesClient, getResolvedProvider } from "./clientRuntime.js";
+import { log, assertSignerMatchesClient, getResolvedProvider, resolveSlippageBps, applySlippageBps } from "./clientRuntime.js";
 
 export function createUniswapV2Client(context) {
   function v2UnsupportedError() {
@@ -72,14 +72,19 @@ export function createUniswapV2Client(context) {
     return pairs;
   }
 
-  async function swapToken(token0, token1, amountInRaw, signer) {
+  async function swapToken(token0, token1, amountInRaw, signer, options) {
     assertV2Configured();
+    const slippageBps = resolveSlippageBps(options);
     await assertSignerMatchesClient(context, signer);
 
     const amountInBigNumber = ethers.BigNumber.from(amountInRaw.toString());
     const routerContract = swappiRouterContract(signer);
 
-    log(context, "info", `Swapping tokens via Swappi V2 Router: ${token0.address} -> ${token1.address}, amountIn: ${formatUnits(amountInRaw, token0.decimals)}`);
+    log(
+      context,
+      "info",
+      `Swapping tokens via Swappi V2 Router: ${token0.address} -> ${token1.address}, amountIn: ${formatUnits(amountInRaw, token0.decimals)}, slippageBps: ${slippageBps}`
+    );
 
     if (!isWETH(token0.address, context.addresses.WCFX9_ADDRESS)) {
       const token0Contract = erc20Contract(token0.address, signer);
@@ -105,13 +110,13 @@ export function createUniswapV2Client(context) {
     }
     const { bestPath, maxAmountOut } = pathRes;
 
-    const amountOutMin = maxAmountOut.mul(995).div(1000);
+    const amountOutMin = applySlippageBps(maxAmountOut, slippageBps);
     const txDeadline = deadline();
 
     log(
       context,
       "info",
-      `Best path found: ${bestPath.join(" -> ")}, expected amount out: ${formatUnits(maxAmountOut, token1.decimals)}, amountOutMin: ${formatUnits(amountOutMin, token1.decimals)}`
+      `Best path found: ${bestPath.join(" -> ")}, expected amount out: ${formatUnits(maxAmountOut, token1.decimals)}, amountOutMin: ${formatUnits(amountOutMin, token1.decimals)}, slippageBps: ${slippageBps}`
     );
 
     if (isWETH(token0.address, context.addresses.WCFX9_ADDRESS)) {

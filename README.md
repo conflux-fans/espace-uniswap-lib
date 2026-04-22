@@ -84,6 +84,19 @@ console.log("tx:", receipt.transactionHash);
 - 传入 `rpcUrl` 后会通过链上 `chainId` 自动识别主网或测试网。
 - 如果显式传 `network`，且它与 `rpcUrl` 实际链不一致，会直接报错。
 - `signer` 推荐始终基于 `client.provider` 创建，避免网络不一致。
+- swap 方法默认使用 `50 bps` 滑点限制，也就是 `0.5%`。
+
+如果你要显式传入 `1%` 滑点，可以在 swap 方法最后追加 `options`：
+
+```js
+const receipt = await client.v3.swapExactInputMulticall(
+  client.tokens.WCFX9,
+  client.tokens.USDT0,
+  amountInRaw,
+  signer,
+  { slippageBps: 100 }
+);
+```
 
 ## 常用入口
 
@@ -98,17 +111,17 @@ console.log("tx:", receipt.transactionHash);
 
 ### V2
 
-- `client.v2.swapToken(tokenIn, tokenOut, amountInRaw, signer)`: 走 `Swappi V2` 做 exact-in 兑换，内部会搜索最佳路径并发送交易。
+- `client.v2.swapToken(tokenIn, tokenOut, amountInRaw, signer, options?)`: 走 `Swappi V2` 做 exact-in 兑换，内部会搜索最佳路径并发送交易。
 - `client.v2.getBestPath(tokenInAddress, tokenOutAddress, amountInRaw, providerOrSigner)`: 评估候选 V2 路径，返回预估输出最高的那一条。
 - `client.v2.getPair(tokenA, tokenB, provider)`: 读取某个 V2 Pair 的储备，并构造成 SDK `Pair` 对象。
 - `client.v2.getSwappiPairs(provider)`: 扫描 Factory 下全部 Pair。
 
 ### V3
 
-- `client.v3.findRoute(tokenIn, tokenOut, amountInRaw, recipient)`: 用 `AlphaRouter` 搜索可用的 `V3` 路由。
-- `client.v3.swapExactInputSingle(tokenIn, tokenOut, fee, amountInRaw, signer)`: 单跳兑换，适合已知 fee tier 的场景。
-- `client.v3.swapExactInput(tokenIn, tokenOut, fee, amountInRaw, signer)`: 先找路由，再直接调用 `router.exactInput`。
-- `client.v3.swapExactInputMulticall(tokenIn, tokenOut, amountInRaw, signer)`: 先找路由，再通过 `router.multicall` 执行兑换。
+- `client.v3.findRoute(tokenIn, tokenOut, amountInRaw, recipient, options?)`: 用 `AlphaRouter` 搜索可用的 `V3` 路由。
+- `client.v3.swapExactInputSingle(tokenIn, tokenOut, fee, amountInRaw, signer, options?)`: 单跳兑换，适合已知 fee tier 的场景。
+- `client.v3.swapExactInput(tokenIn, tokenOut, fee, amountInRaw, signer, options?)`: 先找路由，再直接调用 `router.exactInput`。
+- `client.v3.swapExactInputMulticall(tokenIn, tokenOut, amountInRaw, signer, options?)`: 先找路由，再通过 `router.multicall` 执行兑换。
 - `client.v3.getPoolInfo(poolContract)`: 读取池子的核心状态。
 - `client.v3.getPoolReserveAmounts(pool, provider)`: 查询池子当前两侧 token 余额。
 
@@ -139,6 +152,18 @@ console.log("tx:", receipt.transactionHash);
 - `bases`: 可选，覆盖 V2 路由候选中间币
 - `logger`: 可选，注入 `info` / `error` / `debug` 方法
 - `hooks.onTxMined`: 可选，交易确认后的异步回调
+
+## Swap Options
+
+swap 相关方法和 `client.v3.findRoute(...)` 额外支持一个末尾 `options` 参数：
+
+- `slippageBps`: 可选整数，单位是 `bps`；`50` 表示 `0.5%`，`100` 表示 `1%`
+
+说明：
+
+- 未传时默认使用 `50`
+- 取值范围是 `0` 到 `9999`
+- 如果你希望 `findRoute(...)` 的预览结果与实际 swap 使用同一滑点，应传入相同的 `slippageBps`
 
 ## 当前限制
 

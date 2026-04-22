@@ -26,7 +26,14 @@ import {
 } from "./abis.js";
 import { deadline, erc20Contract, formatUnits } from "./utils.js";
 import { parseUnits } from "viem";
-import { log, assertSignerMatchesClient, getResolvedProvider } from "./clientRuntime.js";
+import {
+  log,
+  assertSignerMatchesClient,
+  getResolvedProvider,
+  BPS_BASE,
+  resolveSlippageBps,
+  applySlippageBps,
+} from "./clientRuntime.js";
 
 function shortAddress(address) {
   if (!address || typeof address !== "string") return "unknown";
@@ -166,7 +173,8 @@ export function createUniswapV3Client(context) {
     await context.utils.approveIfNeeded(tokenIn.address, context.addresses.WFX_ROUTER, amountInBigNumber, signer);
   }
 
-  async function swapExactInputSingle(tokenIn, tokenOut, fee, amountInRaw, signer) {
+  async function swapExactInputSingle(tokenIn, tokenOut, fee, amountInRaw, signer, options) {
+    const slippageBps = resolveSlippageBps(options);
     await assertSignerMatchesClient(context, signer);
 
     const amountInBigNumber = ethers.BigNumber.from(amountInRaw.toString());
@@ -198,6 +206,7 @@ export function createUniswapV3Client(context) {
 
     const quoteAmountRes = await getQuoteOutput(swapRoute, tokenIn, amountInRaw);
     const quoteAmount = quoteAmountRes[0];
+    const amountOutMinimum = applySlippageBps(ethers.BigNumber.from(quoteAmount.toString()), slippageBps);
 
     const uncheckedTrade = Trade.createUncheckedTrade({
       route: swapRoute,
@@ -212,13 +221,19 @@ export function createUniswapV3Client(context) {
       tradeType: TradeType.EXACT_INPUT,
     });
 
-    const options = {
-      slippageTolerance: new Percent(50, 10_000),
+    log(
+      context,
+      "info",
+      `[V3][single] quote=${quoteAmount.toString()} minOut=${amountOutMinimum.toString()} slippageBps=${slippageBps}`
+    );
+
+    const swapCallOptions = {
+      slippageTolerance: new Percent(slippageBps, BPS_BASE),
       deadline: deadline(),
       recipient: signer.address,
     };
 
-    const methodParameters = SwapRouter.swapCallParameters([uncheckedTrade], options);
+    const methodParameters = SwapRouter.swapCallParameters([uncheckedTrade], swapCallOptions);
     const value = isWETH(tokenIn.address, context.addresses.WCFX9_ADDRESS) ? amountInBigNumber : ethers.BigNumber.from(0);
     const tx = {
       data: methodParameters.calldata,
@@ -234,13 +249,14 @@ export function createUniswapV3Client(context) {
     return receipt;
   }
 
-  async function swapExactInput(tokenIn, tokenOut, fee, amountInRaw, signer) {
+  async function swapExactInput(tokenIn, tokenOut, fee, amountInRaw, signer, options) {
     void fee;
+    const slippageBps = resolveSlippageBps(options);
     await assertSignerMatchesClient(context, signer);
 
     const amountInBigNumber = ethers.BigNumber.from(amountInRaw.toString());
 
-    const route = await findRoute(tokenIn, tokenOut, amountInRaw, signer.address);
+    const route = await findRoute(tokenIn, tokenOut, amountInRaw, signer.address, { slippageBps });
     if (!route || !route.route?.[0]?.route) {
       log(
         context,
@@ -275,8 +291,13 @@ export function createUniswapV3Client(context) {
       signer
     );
 
-    const amountOutMinimum = quoteAmount.mul(995).div(1000);
+    const amountOutMinimum = applySlippageBps(quoteAmount, slippageBps);
     const value = isWETH(tokenIn.address, context.addresses.WCFX9_ADDRESS) ? amountInBigNumber : ethers.BigNumber.from(0);
+    log(
+      context,
+      "info",
+      `[V3][swap] route ok source=${route.source || "alpha-router"} hops=${rawRoute.pools?.length || 0} quote=${quoteAmount.toString()} minOut=${amountOutMinimum.toString()} slippageBps=${slippageBps}`
+    );
     const txRes = await routerContract.exactInput({
       path,
       recipient: signer.address,
@@ -292,17 +313,22 @@ export function createUniswapV3Client(context) {
     return receipt;
   }
 
-  async function findRoute(tokenIn, tokenOut, amountInRaw, recipient) {
-    log(context, "debug", `[V3][route] search ${tokenLabel(tokenIn)}->${tokenLabel(tokenOut)} amount=${amountInRaw.toString()}`);
+  async function findRoute(tokenIn, tokenOut, amountInRaw, recipient, options) {
+    const slippageBps = resolveSlippageBps(options);
+    log(
+      context,
+      "debug",
+      `[V3][route] search ${tokenLabel(tokenIn)}->${tokenLabel(tokenOut)} amount=${amountInRaw.toString()} slippageBps=${slippageBps}`
+    );
 
     const router = new AlphaRouter({
       chainId: context.chainId,
       provider: context.provider,
     });
 
-    const options = {
+    const routeOptions = {
       recipient,
-      slippageTolerance: new Percent(50, 10_000),
+      slippageTolerance: new Percent(slippageBps, BPS_BASE),
       deadline: deadline(),
       type: SwapType.SWAP_ROUTER_02,
     };
@@ -315,7 +341,7 @@ export function createUniswapV3Client(context) {
         ),
         tokenOut,
         TradeType.EXACT_INPUT,
-        options,
+        routeOptions,
         {
           protocols: ["V3"],
         }
@@ -332,16 +358,17 @@ export function createUniswapV3Client(context) {
     }
   }
 
-  async function swapExactInputMulticall(tokenIn, tokenOut, amountInRaw, signer) {
+  async function swapExactInputMulticall(tokenIn, tokenOut, amountInRaw, signer, options) {
+    const slippageBps = resolveSlippageBps(options);
     await assertSignerMatchesClient(context, signer);
 
     log(
       context,
       "debug",
-      `[V3][multicall] start ${tokenLabel(tokenIn)}->${tokenLabel(tokenOut)} amount=${amountInRaw.toString()}`
+      `[V3][multicall] start ${tokenLabel(tokenIn)}->${tokenLabel(tokenOut)} amount=${amountInRaw.toString()} slippageBps=${slippageBps}`
     );
 
-    const route = await findRoute(tokenIn, tokenOut, amountInRaw, signer.address);
+    const route = await findRoute(tokenIn, tokenOut, amountInRaw, signer.address, { slippageBps });
     if (!route || !route.route?.[0]?.route) {
       log(
         context,
@@ -367,7 +394,7 @@ export function createUniswapV3Client(context) {
       signer
     );
 
-    const amountOutMinimum = quoteAmount.mul(995).div(1000);
+    const amountOutMinimum = applySlippageBps(quoteAmount, slippageBps);
     const datas = [];
     const tokenOutIsWETH = isWETH(tokenOut.address, context.addresses.WCFX9_ADDRESS);
     const tokenInIsWETH = isWETH(tokenIn.address, context.addresses.WCFX9_ADDRESS);
@@ -401,7 +428,7 @@ export function createUniswapV3Client(context) {
     log(
       context,
       "info",
-      `[V3][multicall] route ok source=${route.source || "alpha-router"} hops=${rawRoute.pools?.length || 0} quote=${quoteAmount.toString()} minOut=${amountOutMinimum.toString()}`
+      `[V3][multicall] route ok source=${route.source || "alpha-router"} hops=${rawRoute.pools?.length || 0} quote=${quoteAmount.toString()} minOut=${amountOutMinimum.toString()} slippageBps=${slippageBps}`
     );
     log(context, "info", `[V3][multicall] send calls=${datas.length} value=${txValue.toString()}`);
 
