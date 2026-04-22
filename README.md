@@ -145,4 +145,5 @@ console.log("tx:", receipt.transactionHash);
 - `swapExactInputMulticall` 当前不会自动为 ERC20 输入执行 `approve`，调用前需自行授权 `WFX_ROUTER`。
 - `uniswapV2.addLiquidity` 和 `uniswapV2.removeLiquidity` 仅保留导出，尚未实现。
 - 当前版本仍保留 `Pair.getAddress` 的全局覆写行为；如果同一进程同时创建多个不同网络的 `client`，请避免依赖 V2 的全局 Pair 地址行为。
-- 测试网默认只明确切换了 `RPC`、`WCFX9`、`USDT0` 和 `Multicall3`；如测试网协议部署地址与你的环境不一致，请通过 `addresses` 显式覆盖。
+- 测试网当前不提供完整的 `Swappi V2` 配置；`Pair.getAddress` 和 `client.v2.*` 在测试网会直接报错。
+- 测试网默认只明确切换了 `RPC`、`WCFX9`、`USDT0` 和 `Multicall3`；如测试网协议地址与你的环境一致且你需要启用，请通过 `addresses` 显式覆盖并自行承担兼容性校验。

@@ -6,23 +6,44 @@ import { computePairAddress, erc20Contract, deadline, formatEther, formatUnits }
 import { log, assertSignerMatchesClient, getResolvedProvider } from "./clientRuntime.js";
 
 export function createUniswapV2Client(context) {
+  function v2UnsupportedError() {
+    return new Error(`Swappi V2 is not configured for ${context.network}; Pair.getAddress and V2 methods are unavailable on this network`);
+  }
+
+  function assertV2Configured() {
+    if (context.network !== "mainnet") {
+      throw v2UnsupportedError();
+    }
+    if (!context.addresses.SWAPPI_FACTORY || !context.addresses.SWAPPI_ROUTER_V2 || !context.addresses.INIT_CODE_HASH) {
+      throw new Error(`Swappi V2 addresses are incomplete for ${context.network}`);
+    }
+  }
+
   function swappiFactoryAddress() {
+    assertV2Configured();
     return context.addresses.SWAPPI_FACTORY;
   }
 
   function swappiRouterV2Address() {
+    assertV2Configured();
     return context.addresses.SWAPPI_ROUTER_V2;
   }
 
-  // 保持当前行为：Pair.getAddress 仍是全局覆写。
-  Pair.getAddress = function (token0Address, token1Address) {
-    return computePairAddress({
-      factoryAddress: swappiFactoryAddress(),
-      tokenA: token0Address,
-      tokenB: token1Address,
-      initCodeHash: context.addresses.INIT_CODE_HASH,
-    });
-  };
+  // 仍保留全局覆写，但根据当前网络切换行为。
+  if (context.network === "mainnet") {
+    Pair.getAddress = function (token0Address, token1Address) {
+      return computePairAddress({
+        factoryAddress: swappiFactoryAddress(),
+        tokenA: token0Address,
+        tokenB: token1Address,
+        initCodeHash: context.addresses.INIT_CODE_HASH,
+      });
+    };
+  } else {
+    Pair.getAddress = function () {
+      throw v2UnsupportedError();
+    };
+  }
 
   function swappiFactoryContract(signerOrProvider) {
     return new ethers.Contract(swappiFactoryAddress(), FactoryABI, signerOrProvider);
@@ -33,6 +54,7 @@ export function createUniswapV2Client(context) {
   }
 
   async function getSwappiPairs(provider = context.provider) {
+    assertV2Configured();
     const factoryContract = swappiFactoryContract(getResolvedProvider(context, provider));
     const count = await factoryContract.allPairsLength();
     const pairs = [];
@@ -51,6 +73,7 @@ export function createUniswapV2Client(context) {
   }
 
   async function swapToken(token0, token1, amountInRaw, signer) {
+    assertV2Configured();
     await assertSignerMatchesClient(context, signer);
 
     const amountInBigNumber = ethers.BigNumber.from(amountInRaw.toString());
@@ -126,6 +149,7 @@ export function createUniswapV2Client(context) {
   }
 
   async function getPair(token0, token1, provider = context.provider) {
+    assertV2Configured();
     if (!token0?.address || !token1?.address || typeof token0.sortsBefore !== "function") {
       throw new Error("getPair expects token0/token1 as @uniswap/sdk-core Token instances");
     }
@@ -148,6 +172,7 @@ export function createUniswapV2Client(context) {
   }
 
   async function getBestPath(token0, token1, amountIn, signerOrProvider = context.provider) {
+    assertV2Configured();
     const router = swappiRouterContract(signerOrProvider);
     const allPaths = getAllPaths(token0, token1, context.bases, 2);
     const results = await Promise.all(

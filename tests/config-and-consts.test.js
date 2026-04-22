@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { ethers } from "ethers";
 import { createClient } from "../src/config.js";
 import { getAllPaths, isWETH } from "../src/consts.js";
+import { Pair } from "../src/uniswapDeps.js";
 
 const originalGetNetwork = ethers.providers.JsonRpcProvider.prototype.getNetwork;
 
@@ -82,6 +83,25 @@ test("mainnet and testnet clients keep different token values", async () => {
   assert.equal("cUSDT" in testnetClient.tokens, false);
 });
 
+test("mainnet client overwrites Pair.getAddress with mainnet V2 config", async () => {
+  const client = await createClient();
+  const pairAddress = Pair.getAddress(client.tokens.WCFX9, client.tokens.USDT0);
+  assert.equal(typeof pairAddress, "string");
+  assert.equal(pairAddress.startsWith("0x"), true);
+  assert.equal(pairAddress.length, 42);
+});
+
+test("testnet client makes Pair.getAddress fail fast", async () => {
+  const client = await createClient({
+    rpcUrl: "https://evmtestnet.confluxrpc.com",
+  });
+
+  assert.throws(
+    () => Pair.getAddress(client.tokens.WCFX9, client.tokens.USDT0),
+    /Swappi V2 is not configured for testnet/
+  );
+});
+
 test("addresses override also refreshes default bases when bases are omitted", async () => {
   const overriddenWeth = "0x5555555555555555555555555555555555555555";
   const client = await createClient({
@@ -107,5 +127,16 @@ test("write methods reject signer on different network", async () => {
   await assert.rejects(
     () => client.v2.swapToken(client.tokens.WCFX9, client.tokens.USDT0, "1", fakeSigner),
     /Signer network mismatch/
+  );
+});
+
+test("testnet V2 methods fail fast because config is incomplete", async () => {
+  const client = await createClient({
+    rpcUrl: "https://evmtestnet.confluxrpc.com",
+  });
+
+  await assert.rejects(
+    () => client.v2.getBestPath(client.tokens.WCFX9.address, client.tokens.USDT0.address, "1"),
+    /Swappi V2 is not configured for testnet/
   );
 });
