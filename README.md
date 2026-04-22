@@ -1,43 +1,48 @@
 # espace-uniswap-lib
 
-`Conflux eSpace` 上的 `Swappi V2` / `vSwap(WallFreeX) V3` 辅助库。  
-核心变化是去掉全局 `configure(...)`，改成 `await createClient(...)` 创建实例；每个 `client` 绑定一条确定的网络配置。
+Utility library for `Swappi V2` and `vSwap (WallFreeX) V3` on `Conflux eSpace`.
 
-## 适用场景
+Chinese documentation: [README_ZH.md](./README_ZH.md)
 
-- `V2` / `V3` exact-in 兑换
-- `V2` 路径试算与 Pair 查询
-- `V3` 路由搜索、报价、池子读取
-- `V3` 流动性头寸创建、加减仓、手续费提取
-- ERC20 授权、余额轮询、multicall 批量查询
+## What It Covers
 
-## 模块说明
+- `V2` / `V3` exact-in swaps
+- `V2` path quoting and pair queries
+- `V3` routing, quoting, and pool state reads
+- `V3` liquidity position creation, increase, decrease, and fee collection
+- ERC20 approvals, balance polling, and multicall helpers
 
-- `createClient`: 初始化当前网络的 `provider`、地址、Token 和 V2/V3 能力。
-- `client.v2`: `Swappi V2` 兑换、路径搜索、Pair 查询。
-- `client.v3`: `V3` 路由搜索、兑换、池子读取、LP/NFT 头寸操作。
-- `client.utils`: 授权、余额查询、multicall 等辅助方法。
-- `ethersProvider`: `provider` / `signer` 创建工具。
-- `consts`: 与网络无关的常量和纯函数。
+## Modules
 
-## 安装
+- `createClient`: builds the current network `provider`, addresses, tokens, and V2/V3 helpers
+- `client.v2`: `Swappi V2` swaps, path search, and pair queries
+- `client.v3`: `V3` routing, swaps, pool reads, and LP/NFT position helpers
+- `client.utils`: approvals, balance queries, multicall helpers, and utility methods
+- `ethersProvider`: helpers to create `provider` / `signer`
+- `consts`: network-agnostic constants and pure helpers
+
+## Installation
 
 ```bash
-pnpm add /absolute/path/to/espace-uniswap-lib
+pnpm add espace-uniswap-lib
 ```
 
-要求：
+Or:
+
+```bash
+npm install espace-uniswap-lib
+```
+
+Requirements:
 
 - `Node.js >= 20`
-- `ESM` 环境
+- `ESM`
 
-## 快速开始
+## Quick Start
 
-下面示例演示一件最常见的事：创建一个 `client`，自动识别当前是主网还是测试网，然后把 `0.01 WCFX` 兑换成 `USDT0`。
+The example below creates a client, auto-detects mainnet or testnet from the RPC, and swaps `0.01 WCFX` to `USDT0`.
 
-### 1. 初始化 client 和 signer
-
-这一段负责连接 RPC、识别网络，并生成当前网络对应的 `provider`、地址配置和 `Token` 实例。
+### 1. Create a client and signer
 
 ```js
 import {
@@ -56,9 +61,7 @@ const client = await createClient({
 const signer = createEthersSigner(privateKey, client.provider);
 ```
 
-### 2. 发起一次 V3 multicall 兑换
-
-这一段把 `0.01 WCFX` 作为输入资产，通过当前 `client` 的 `V3 Router.multicall` 执行兑换。
+### 2. Execute a V3 multicall swap
 
 ```js
 import {
@@ -77,16 +80,16 @@ console.log("network:", client.network);
 console.log("tx:", receipt.transactionHash);
 ```
 
-说明：
+Notes:
 
-- `createClient(...)` 只接受 `rpcUrl`，不接受 `provider`。
-- 不传 `rpcUrl` 时默认使用主网配置。
-- 传入 `rpcUrl` 后会通过链上 `chainId` 自动识别主网或测试网。
-- 如果显式传 `network`，且它与 `rpcUrl` 实际链不一致，会直接报错。
-- `signer` 推荐始终基于 `client.provider` 创建，避免网络不一致。
-- swap 方法默认使用 `50 bps` 滑点限制，也就是 `0.5%`。
+- `createClient(...)` accepts `rpcUrl`, not `provider`
+- if `rpcUrl` is omitted, mainnet is used by default
+- when `rpcUrl` is provided, the library detects mainnet or testnet from on-chain `chainId`
+- if `network` is explicitly provided and does not match the actual RPC chain, the call throws
+- create the signer from `client.provider` to avoid network mismatch
+- swap methods use `50 bps` slippage by default, which means `0.5%`
 
-如果你要显式传入 `1%` 滑点，可以在 swap 方法最后追加 `options`：
+If you want to use `1%` slippage explicitly, pass `options` as the last argument:
 
 ```js
 const receipt = await client.v3.swapExactInputMulticall(
@@ -98,77 +101,77 @@ const receipt = await client.v3.swapExactInputMulticall(
 );
 ```
 
-## 常用入口
+## Common APIs
 
-### 初始化
+### Initialization
 
-- `createClient(options)`: 创建一个绑定单一网络的 `client`。
-- `client.getConfig()`: 读取当前 `client` 的完整配置快照。
-- `client.network`: 当前网络，值为 `mainnet` 或 `testnet`。
-- `client.chainId`: 当前网络的 `chainId`。
-- `client.provider`: 当前 `client` 使用的 `ethers` provider。
-- `client.tokens`: 当前网络的预置 `Token` 实例，如 `WCFX9`、`USDT0`。
+- `createClient(options)`: create a client bound to a single network
+- `client.getConfig()`: read the full client config snapshot
+- `client.network`: current network, `mainnet` or `testnet`
+- `client.chainId`: current chain ID
+- `client.provider`: the `ethers` provider used by the client
+- `client.tokens`: prebuilt `Token` instances for the current network, such as `WCFX9` and `USDT0`
 
 ### V2
 
-- `client.v2.swapToken(tokenIn, tokenOut, amountInRaw, signer, options?)`: 走 `Swappi V2` 做 exact-in 兑换，内部会搜索最佳路径并发送交易。
-- `client.v2.getBestPath(tokenInAddress, tokenOutAddress, amountInRaw, providerOrSigner)`: 评估候选 V2 路径，返回预估输出最高的那一条。
-- `client.v2.getPair(tokenA, tokenB, provider)`: 读取某个 V2 Pair 的储备，并构造成 SDK `Pair` 对象。
-- `client.v2.getSwappiPairs(provider)`: 扫描 Factory 下全部 Pair。
+- `client.v2.swapToken(tokenIn, tokenOut, amountInRaw, signer, options?)`: execute an exact-in swap through `Swappi V2`
+- `client.v2.getBestPath(tokenInAddress, tokenOutAddress, amountInRaw, providerOrSigner)`: evaluate candidate V2 paths and return the one with the highest quoted output
+- `client.v2.getPair(tokenA, tokenB, provider)`: read reserves for a V2 pair and build an SDK `Pair`
+- `client.v2.getSwappiPairs(provider)`: scan all pairs from the factory
 
 ### V3
 
-- `client.v3.findRoute(tokenIn, tokenOut, amountInRaw, recipient, options?)`: 用 `AlphaRouter` 搜索可用的 `V3` 路由。
-- `client.v3.swapExactInputSingle(tokenIn, tokenOut, fee, amountInRaw, signer, options?)`: 单跳兑换，适合已知 fee tier 的场景。
-- `client.v3.swapExactInput(tokenIn, tokenOut, fee, amountInRaw, signer, options?)`: 先找路由，再直接调用 `router.exactInput`。
-- `client.v3.swapExactInputMulticall(tokenIn, tokenOut, amountInRaw, signer, options?)`: 先找路由，再通过 `router.multicall` 执行兑换。
-- `client.v3.getPoolInfo(poolContract)`: 读取池子的核心状态。
-- `client.v3.getPoolReserveAmounts(pool, provider)`: 查询池子当前两侧 token 余额。
+- `client.v3.findRoute(tokenIn, tokenOut, amountInRaw, recipient, options?)`: search a `V3` route with `AlphaRouter`
+- `client.v3.swapExactInputSingle(tokenIn, tokenOut, fee, amountInRaw, signer, options?)`: single-hop swap when the fee tier is already known
+- `client.v3.swapExactInput(tokenIn, tokenOut, fee, amountInRaw, signer, options?)`: search a route and call `router.exactInput`
+- `client.v3.swapExactInputMulticall(tokenIn, tokenOut, amountInRaw, signer, options?)`: search a route and execute with `router.multicall`
+- `client.v3.getPoolInfo(poolContract)`: read core pool state
+- `client.v3.getPoolReserveAmounts(pool, provider)`: query current token balances for a pool
 
-### V3 流动性
+### V3 Liquidity
 
-- `client.v3.mintPosition(tokenA, tokenB, fee, amount0, amount1, tickLower, tickUpper, signer)`: 创建新的 V3 流动性头寸。
-- `client.v3.getPositions(address, provider)`: 读取某个地址当前持有的全部 V3 NFT 头寸。
-- `client.v3.findPosition(tokenA, tokenB, fee, signer)`: 按 token 对和 fee 查找当前账户中的头寸。
-- `client.v3.addLiquidity(tokenA, tokenB, fee, amount0, amount1, signer)`: 给已存在头寸追加流动性。
-- `client.v3.removeLiquidity(tokenA, tokenB, fee, signer)`: 从已存在头寸中移除部分流动性。
-- `client.v3.collectFees(tokenA, tokenB, fee, signer)`: 提取某个头寸当前可领取的手续费。
+- `client.v3.mintPosition(tokenA, tokenB, fee, amount0, amount1, tickLower, tickUpper, signer)`: create a new V3 liquidity position
+- `client.v3.getPositions(address, provider)`: read all V3 NFT positions owned by an address
+- `client.v3.findPosition(tokenA, tokenB, fee, signer)`: find an existing position by token pair and fee tier
+- `client.v3.addLiquidity(tokenA, tokenB, fee, amount0, amount1, signer)`: add liquidity to an existing position
+- `client.v3.removeLiquidity(tokenA, tokenB, fee, signer)`: remove liquidity from an existing position
+- `client.v3.collectFees(tokenA, tokenB, fee, signer)`: collect fees for a position
 
-### 工具
+### Utilities
 
-- `client.utils.approveIfNeeded(token, spender, amount, signer)`: allowance 不足时自动授权。
-- `client.utils.batchErc20Balances(tokens, addresses, provider)`: 通过 multicall 批量查询 ERC20 余额。
-- `client.utils.batchNativeBalances(addresses, provider)`: 通过 multicall 批量查询原生币余额。
-- `fromReadableAmount(amount, decimals)`: 把人类可读金额转成链上最小单位。
-- `parseEther` / `formatEther` / `parseUnits` / `formatUnits`: `ethers` 常用金额转换函数。
+- `client.utils.approveIfNeeded(token, spender, amount, signer)`: approve automatically when allowance is insufficient
+- `client.utils.batchErc20Balances(tokens, addresses, provider)`: query ERC20 balances in batch through multicall
+- `client.utils.batchNativeBalances(addresses, provider)`: query native balances in batch through multicall
+- `fromReadableAmount(amount, decimals)`: convert a human-readable amount into the on-chain smallest unit
+- `parseEther` / `formatEther` / `parseUnits` / `formatUnits`: common `ethers` amount helpers
 
-## createClient 参数
+## createClient Options
 
-`createClient(...)` 支持以下字段：
+`createClient(...)` supports:
 
-- `network`: 可选，`mainnet` 或 `testnet`
-- `rpcUrl`: 可选，自定义 RPC URL
-- `addresses`: 可选，覆盖当前网络地址配置
-- `bases`: 可选，覆盖 V2 路由候选中间币
-- `logger`: 可选，注入 `info` / `error` / `debug` 方法
-- `hooks.onTxMined`: 可选，交易确认后的异步回调
+- `network`: optional, `mainnet` or `testnet`
+- `rpcUrl`: optional, custom RPC URL
+- `addresses`: optional, override the current network address preset
+- `bases`: optional, override V2 routing base tokens
+- `logger`: optional, inject `info` / `error` / `debug`
+- `hooks.onTxMined`: optional, async callback after a transaction is mined
 
 ## Swap Options
 
-swap 相关方法和 `client.v3.findRoute(...)` 额外支持一个末尾 `options` 参数：
+Swap-related methods and `client.v3.findRoute(...)` accept an extra trailing `options` argument:
 
-- `slippageBps`: 可选整数，单位是 `bps`；`50` 表示 `0.5%`，`100` 表示 `1%`
+- `slippageBps`: optional integer in `bps`; `50` means `0.5%`, `100` means `1%`
 
-说明：
+Notes:
 
-- 未传时默认使用 `50`
-- 取值范围是 `0` 到 `9999`
-- 如果你希望 `findRoute(...)` 的预览结果与实际 swap 使用同一滑点，应传入相同的 `slippageBps`
+- the default is `50`
+- the accepted range is `0` to `9999`
+- if you want route preview and the actual swap to use the same slippage boundary, pass the same `slippageBps` value to both
 
-## 当前限制
+## Current Limitations
 
-- `swapExactInputMulticall` 当前不会自动为 ERC20 输入执行 `approve`，调用前需自行授权 `WFX_ROUTER`。
-- `uniswapV2.addLiquidity` 和 `uniswapV2.removeLiquidity` 仅保留导出，尚未实现。
-- 当前版本仍保留 `Pair.getAddress` 的全局覆写行为；如果同一进程同时创建多个不同网络的 `client`，请避免依赖 V2 的全局 Pair 地址行为。
-- 测试网当前不提供完整的 `Swappi V2` 配置；`Pair.getAddress` 和 `client.v2.*` 在测试网会直接报错。
-- 测试网默认只明确切换了 `RPC`、`WCFX9`、`USDT0` 和 `Multicall3`；如测试网协议地址与你的环境一致且你需要启用，请通过 `addresses` 显式覆盖并自行承担兼容性校验。
+- `swapExactInputMulticall` does not auto-approve ERC20 input tokens; approve `WFX_ROUTER` before calling it
+- `uniswapV2.addLiquidity` and `uniswapV2.removeLiquidity` are exported but not implemented yet
+- the library still keeps the global `Pair.getAddress` override; avoid relying on V2 global pair-address behavior when creating clients for different networks in the same process
+- testnet does not currently provide a complete `Swappi V2` preset; `Pair.getAddress` and `client.v2.*` fail fast on testnet
+- by default, testnet only switches `RPC`, `WCFX9`, `USDT0`, and `Multicall3`; if your environment has matching protocol addresses and you want to enable them, override through `addresses` and validate compatibility yourself

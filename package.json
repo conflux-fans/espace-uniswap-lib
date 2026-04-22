@@ -10,6 +10,12 @@
     "./abis": "./src/abis.js",
     "./config": "./src/config.js"
   },
+  "files": [
+    "README.md",
+    "src",
+    "abis",
+    "README_ZH.md"
+  ],
   "scripts": {
     "test": "node --test",
     "example:v2": "node example/uniswapv2-swap.js",
