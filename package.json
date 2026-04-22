@@ -4,6 +4,14 @@
   "description": "Reusable Uniswap V2/V3 helper library for Conflux eSpace",
   "type": "module",
   "main": "src/index.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/conflux-fans/espace-uniswap-lib.git"
+  },
+  "homepage": "https://github.com/conflux-fans/espace-uniswap-lib#readme",
+  "bugs": {
+    "url": "https://github.com/conflux-fans/espace-uniswap-lib/issues"
+  },
   "exports": {
     ".": "./src/index.js",
     "./consts": "./src/consts.js",
