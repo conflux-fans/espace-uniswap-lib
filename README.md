@@ -4,6 +4,18 @@ Utility library for `Swappi V2` and `vSwap (WallFreeX) V3` on `Conflux eSpace`.
 
 Chinese documentation: [README_ZH.md](./README_ZH.md)
 
+## Upgrade Notes (0.1.x → 0.2.0)
+
+Breaking changes:
+
+- `client.v2.SwappiPair` (the `@uniswap/v2-sdk` `Pair` class) is removed. Use `client.v2.createSwappiPair(tokenA, tokenB, reserve0Raw, reserve1Raw)` for the factory equivalent.
+- `client.v2.getPair(...)` now returns a Pair-shaped object (`token0/token1/reserve0/reserve1/liquidityToken/reserveOf/priceOf/token0Price/token1Price/involvesToken`) instead of an `@uniswap/v2-sdk` `Pair` instance. Methods like `getOutputAmount` / `getInputAmount` are not provided; reimplement them locally if you relied on them.
+- `@uniswap/v2-sdk`'s `Pair.getAddress` is no longer monkey-patched. If your code depended on that global side effect, switch to `computePairAddress(...)` from this library.
+- `AlphaRouter` is now constructed with a custom `v2PoolProvider`. If you call `client.v3.findRoute(...)` with `protocols: ['V2']` or `'MIXED'`, you must also inject a custom `v2SubgraphProvider` — the default one still depends on `Pair.getAddress` and will fail on Conflux.
+- Testnet `client.v3.findRoute(...)` now works (previously failed inside the gas model). Testnet `client.v2.*` still fails fast because Swappi V2 is not deployed there.
+
+Migration for most consumers is a no-op — the common paths (`findRoute`, `swapExactInputMulticall`, `getPair`) work as before, just with corrected behavior under npm / yarn / nested-dep installs.
+
 ## What It Covers
 
 - `V2` / `V3` exact-in swaps
@@ -116,7 +128,8 @@ const receipt = await client.v3.swapExactInputMulticall(
 
 - `client.v2.swapToken(tokenIn, tokenOut, amountInRaw, signer, options?)`: execute an exact-in swap through `Swappi V2`
 - `client.v2.getBestPath(tokenInAddress, tokenOutAddress, amountInRaw, providerOrSigner)`: evaluate candidate V2 paths and return the one with the highest quoted output
-- `client.v2.getPair(tokenA, tokenB, provider)`: read reserves for a V2 pair and build an SDK `Pair`
+- `client.v2.getPair(tokenA, tokenB, provider)`: read reserves for a V2 pair and return a Pair-shaped object (`token0/token1/reserve0/reserve1/liquidityToken/reserveOf/priceOf/token0Price/token1Price/involvesToken`)
+- `client.v2.createSwappiPair(tokenA, tokenB, reserve0Raw, reserve1Raw)`: build the same Pair-shaped object from known reserves without any RPC call
 - `client.v2.getSwappiPairs(provider)`: scan all pairs from the factory
 
 ### V3
@@ -172,6 +185,8 @@ Notes:
 
 - `swapExactInputMulticall` does not auto-approve ERC20 input tokens; approve `WFX_ROUTER` before calling it
 - `uniswapV2.addLiquidity` and `uniswapV2.removeLiquidity` are exported but not implemented yet
-- the library still keeps the global `Pair.getAddress` override; avoid relying on V2 global pair-address behavior when creating clients for different networks in the same process
-- testnet does not currently provide a complete `Swappi V2` preset; `Pair.getAddress` and `client.v2.*` fail fast on testnet
+- the library no longer monkey-patches `@uniswap/v2-sdk`'s `Pair.getAddress`; all V2 pair addresses go through `computePairAddress(...)` and `createSwappiPair(...)`, so the library is safe under nested / duplicated `@uniswap/v2-sdk` installs (npm / yarn / pnpm)
+- `getPair()` and the injected V2 pool provider return duck-typed Pair-shaped objects instead of `@uniswap/v2-sdk` `Pair` instances; methods that the SDK `Pair` class provides but this object does not (`getOutputAmount` / `getInputAmount`) are intentionally out of scope
+- testnet does not currently provide a complete `Swappi V2` preset; `client.v2.*` fails fast on testnet. `client.v3.findRoute(...)` on testnet works (the custom V2 pool provider returns an empty accessor, and the gas model falls back to V3 pools)
+- if you ever need `protocols: ['V2']` or `'MIXED'` for AlphaRouter, you must also inject a custom `v2SubgraphProvider`; the default one still calls `Pair.getAddress` and will fail on Conflux
 - by default, testnet only switches `RPC`, `WCFX9`, `USDT0`, and `Multicall3`; if your environment has matching protocol addresses and you want to enable them, override through `addresses` and validate compatibility yourself

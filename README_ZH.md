@@ -2,6 +2,19 @@
 
 `Conflux eSpace` 上的 `Swappi V2` / `vSwap(WallFreeX) V3` 辅助库。  
 
+## 升级说明（0.1.x → 0.2.0）
+
+破坏性变更：
+
+- 移除 `client.v2.SwappiPair`（原本指向 `@uniswap/v2-sdk` 的 `Pair` 类）。用 `client.v2.createSwappiPair(tokenA, tokenB, reserve0Raw, reserve1Raw)` 代替。
+- `client.v2.getPair(...)` 返回值从 `@uniswap/v2-sdk` 的 `Pair` 实例改为 Pair 形对象（含 `token0/token1/reserve0/reserve1/liquidityToken/reserveOf/priceOf/token0Price/token1Price/involvesToken`）。SDK `Pair` 类上的 `getOutputAmount` / `getInputAmount` 不再提供，如需请在上层自行实现。
+- 不再对 `@uniswap/v2-sdk` 的 `Pair.getAddress` 做全局覆写。如依赖这个副作用，改用本库的 `computePairAddress(...)`。
+- `AlphaRouter` 现在由本库注入自定义 `v2PoolProvider`。若调用 `client.v3.findRoute(...)` 时传 `protocols: ['V2']` 或 `'MIXED'`，必须同时注入自定义 `v2SubgraphProvider` —— 默认的 v2SubgraphProvider 仍依赖 `Pair.getAddress`，在 Conflux 上会失败。
+- 测试网下 `client.v3.findRoute(...)` 现在可正常使用（旧版本会在 gas 模型阶段挂掉）。测试网 `client.v2.*` 仍然快速报错，因为 Swappi V2 未部署到测试网。
+
+绝大多数消费者无需改代码 —— `findRoute`、`swapExactInputMulticall`、`getPair` 等常用路径行为一致，只是在 npm / yarn / 嵌套依赖安装场景下从"会出错"变为"正确工作"。
+
+
 ## 适用场景
 
 - `V2` / `V3` exact-in 兑换
@@ -118,7 +131,8 @@ const receipt = await client.v3.swapExactInputMulticall(
 
 - `client.v2.swapToken(tokenIn, tokenOut, amountInRaw, signer, options?)`: 走 `Swappi V2` 做 exact-in 兑换，内部会搜索最佳路径并发送交易。
 - `client.v2.getBestPath(tokenInAddress, tokenOutAddress, amountInRaw, providerOrSigner)`: 评估候选 V2 路径，返回预估输出最高的那一条。
-- `client.v2.getPair(tokenA, tokenB, provider)`: 读取某个 V2 Pair 的储备，并构造成 SDK `Pair` 对象。
+- `client.v2.getPair(tokenA, tokenB, provider)`: 读取某个 V2 Pair 的储备，返回一个 Pair 形状对象（字段/方法：`token0/token1/reserve0/reserve1/liquidityToken/reserveOf/priceOf/token0Price/token1Price/involvesToken`），不触发 `@uniswap/v2-sdk` 的 `Pair` 构造器。
+- `client.v2.createSwappiPair(tokenA, tokenB, reserve0Raw, reserve1Raw)`: 从已知储备直接构造同形对象，不走 RPC。
 - `client.v2.getSwappiPairs(provider)`: 扫描 Factory 下全部 Pair。
 
 ### V3
@@ -174,6 +188,8 @@ swap 相关方法和 `client.v3.findRoute(...)` 额外支持一个末尾 `option
 
 - `swapExactInputMulticall` 当前不会自动为 ERC20 输入执行 `approve`，调用前需自行授权 `WFX_ROUTER`。
 - `uniswapV2.addLiquidity` 和 `uniswapV2.removeLiquidity` 仅保留导出，尚未实现。
-- 当前版本仍保留 `Pair.getAddress` 的全局覆写行为；如果同一进程同时创建多个不同网络的 `client`，请避免依赖 V2 的全局 Pair 地址行为。
-- 测试网当前不提供完整的 `Swappi V2` 配置；`Pair.getAddress` 和 `client.v2.*` 在测试网会直接报错。
+- 本库**不再**覆写 `@uniswap/v2-sdk` 的 `Pair.getAddress`；所有 V2 pair 地址统一通过 `computePairAddress(...)` 与 `createSwappiPair(...)` 计算，因此在 npm / yarn / pnpm 下嵌套/重复安装 `@uniswap/v2-sdk` 的场景均可正确工作。
+- `getPair()` 以及注入给 `AlphaRouter` 的 V2 pool provider 返回 duck-typed 的 Pair 形对象，而非 `@uniswap/v2-sdk` 的 `Pair` 实例；SDK `Pair` 类上存在但本对象未实现的方法（如 `getOutputAmount` / `getInputAmount`）暂不支持。
+- 测试网当前不提供完整的 `Swappi V2` 配置，`client.v2.*` 在测试网会直接报错。`client.v3.findRoute(...)` 在测试网可用 —— 自定义的 V2 pool provider 在未配置 Swappi 时返回空 accessor，gas 模型会自动回退到 V3 池。
+- 若未来需要使用 `protocols: ['V2']` 或 `'MIXED'`，还需额外注入自定义 `v2SubgraphProvider`；默认 `v2SubgraphProvider` 仍调 `Pair.getAddress`，在 Conflux 上会失败。
 - 测试网默认只明确切换了 `RPC`、`WCFX9`、`USDT0` 和 `Multicall3`；如测试网协议地址与你的环境一致且你需要启用，请通过 `addresses` 显式覆盖并自行承担兼容性校验。
