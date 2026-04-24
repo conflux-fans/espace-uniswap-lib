@@ -17,9 +17,11 @@
 - `src/networks/`
   存放主网/测试网预设。
 - `src/uniswapV2.js`
-  提供 `client.v2.*` 能力。
+  提供 `client.v2.*` 能力，以及 `createSwappiPair(...)` 工厂（不触发 `@uniswap/v2-sdk` 的 `Pair` 构造器）。
 - `src/uniswapV3.js`
   提供 `client.v3.*` 能力。
+- `src/swappiV2PoolProvider.js`
+  注入给 `AlphaRouter` 的自定义 V2 pool provider，走 Swappi factory + initCodeHash，不依赖 `Pair.getAddress`。
 - `src/utils.js`
   提供 `client.utils.*` 与纯工具函数。
 - `src/uniswapToken.js`
@@ -27,23 +29,20 @@
 
 ## 重要约束
 
-### 1. 禁止修改 `Pair.getAddress` 全局覆写
+### 1. 不得依赖 `@uniswap/v2-sdk` 的 `Pair.getAddress` / `Pair` 构造器
 
-当前 [src/uniswapV2.js](./src/uniswapV2.js) 中仍保留 `Pair.getAddress` 的全局覆写。  
-这条逻辑当前 **禁止重构、禁止删除、禁止替换**，前提是“不能影响现有功能”。
+本库**不再**通过全局覆写 `Pair.getAddress` 来适配 Swappi。所有 V2 pair 地址一律通过 [src/utils.js](./src/utils.js) 的 `computePairAddress(...)` 显式计算；需要 "Pair 形状" 的对象时，使用 [src/uniswapV2.js](./src/uniswapV2.js) 里的 `createSwappiPair(...)` 工厂（它不会触发 `@uniswap/v2-sdk` 的 `Pair` 构造器）。
 
 原因：
 
-- `@uniswap/v2-sdk` 的 `Pair` 构造函数内部会调用静态方法 `Pair.getAddress(...)`。
-- 第三方依赖中也存在对 `Pair.getAddress(...)` 的直接依赖。
-- 如果仅在本库内部改成显式地址计算，而去掉全局覆写，可能导致：
-  - `Pair` 内部 `liquidityToken` 地址错误
-  - 第三方 V2 路径或调试输出行为错误
+- 全局覆写隐式假设整个进程只有一份 `@uniswap/v2-sdk`。当下游消费者用 npm / yarn 安装，或者 `v-swap-smart-order-router` 嵌套了另一份 `@uniswap/v2-sdk@3.x` 时，覆写就错过那份副本，表现为 `Failed to get gas models: invalid address, value=undefined`。
+- 覆写靠 `pnpm.overrides` 兜底，只在库自身为根项目时生效；作为依赖被安装时会失效。
 
-结论：
+约束：
 
-- 在没有完整替换所有相关调用路径之前，任何涉及 `Pair.getAddress` 的改动都视为高风险改动。
-- 若任务要求“不能影响现有功能”，则这部分必须保持现状。
+- 任何新增 V2 能力：地址用 `computePairAddress(...)`，对象用 `createSwappiPair(...)`，**不要** `new Pair(...)`、**不要** `Pair.getAddress(...)`。
+- 调用 `AlphaRouter` 时必须注入自定义 `v2PoolProvider` —— 见 [src/swappiV2PoolProvider.js](./src/swappiV2PoolProvider.js) 与 [src/uniswapV3.js](./src/uniswapV3.js) 里 `findRoute` 的构造器参数。默认 `V2PoolProvider` 依赖 `Pair.getAddress`，不可使用。
+- 若未来要支持 `protocols: ['V2']` 或 `'MIXED'`，需同时注入自定义 `v2SubgraphProvider`，并核查 `v-swap-smart-order-router` mixed-route gas model 里的 `instanceof Pair` 判断是否会命中（`createSwappiPair` 返回的对象不是 `Pair` 实例）。
 
 ### 2. 变更网络相关逻辑时的要求
 
@@ -56,7 +55,7 @@
 ### 3. 修改测试网地址时的要求
 
 - 测试网目前只明确切换了 `RPC`、`WCFX9`、`USDT0` 和 `Multicall3`。
-- 当前测试网不提供完整的 `Swappi V2` 配置，因此 `Pair.getAddress` 和 `client.v2.*` 在测试网应直接报错。
+- 当前测试网不提供完整的 `Swappi V2` 配置，因此 `client.v2.*` 方法在测试网应通过 `assertV2Configured()` 直接报错；`createSwappiV2PoolProvider(context)` 在测试网返回空 accessor，让 V3 路由的 gas 模型自动跳过 V2 fallback。
 - 若要补齐测试网 DEX 协议地址，必须先确认来源可靠，再写入预设。
 - 在未确认前，应继续通过 `createClient({ addresses: ... })` 让调用方显式覆盖。
 

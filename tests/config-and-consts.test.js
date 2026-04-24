@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { ethers } from "ethers";
 import { createClient } from "../src/config.js";
 import { getAllPaths, isWETH } from "../src/consts.js";
-import { Pair } from "../src/uniswapDeps.js";
+import { createSwappiPair } from "../src/uniswapV2.js";
+import { computePairAddress } from "../src/utils.js";
 
 const originalGetNetwork = ethers.providers.JsonRpcProvider.prototype.getNetwork;
 
@@ -83,22 +84,36 @@ test("mainnet and testnet clients keep different token values", async () => {
   assert.equal("cUSDT" in testnetClient.tokens, false);
 });
 
-test("mainnet client overwrites Pair.getAddress with mainnet V2 config", async () => {
+test("mainnet computePairAddress uses Swappi factory + initCodeHash", async () => {
   const client = await createClient();
-  const pairAddress = Pair.getAddress(client.tokens.WCFX9, client.tokens.USDT0);
+  const pairAddress = computePairAddress({
+    factoryAddress: client.addresses.SWAPPI_FACTORY,
+    tokenA: client.tokens.WCFX9,
+    tokenB: client.tokens.USDT0,
+    initCodeHash: client.addresses.INIT_CODE_HASH,
+  });
   assert.equal(typeof pairAddress, "string");
   assert.equal(pairAddress.startsWith("0x"), true);
   assert.equal(pairAddress.length, 42);
+
+  const pair = createSwappiPair(client.getConfig(), client.tokens.WCFX9, client.tokens.USDT0, "0", "0");
+  assert.equal(pair.liquidityToken.address, pairAddress);
 });
 
-test("testnet client makes Pair.getAddress fail fast", async () => {
+test("testnet createSwappiPair throws because Swappi is not configured", async () => {
   const client = await createClient({
     rpcUrl: "https://evmtestnet.confluxrpc.com",
   });
 
   assert.throws(
-    () => Pair.getAddress(client.tokens.WCFX9, client.tokens.USDT0),
-    /Swappi V2 is not configured for testnet/
+    () =>
+      computePairAddress({
+        factoryAddress: client.addresses.SWAPPI_FACTORY,
+        tokenA: client.tokens.WCFX9,
+        tokenB: client.tokens.USDT0,
+        initCodeHash: client.addresses.INIT_CODE_HASH,
+      }),
+    /invalid|undefined/i
   );
 });
 

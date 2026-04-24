@@ -1,13 +1,61 @@
-import { CurrencyAmount, Pair } from "./uniswapDeps.js";
+import { CurrencyAmount, Price } from "./uniswapDeps.js";
 import { ethers } from "ethers";
 import { PairABI, Router02ABI, FactoryABI } from "./abis.js";
 import { isWETH, getAllPaths } from "./consts.js";
 import { computePairAddress, erc20Contract, deadline, formatEther, formatUnits } from "./utils.js";
 import { log, assertSignerMatchesClient, getResolvedProvider, resolveSlippageBps, applySlippageBps } from "./clientRuntime.js";
 
+export function createSwappiPair(context, tokenA, tokenB, reserve0Raw, reserve1Raw) {
+  const [token0, token1] = tokenA.sortsBefore(tokenB) ? [tokenA, tokenB] : [tokenB, tokenA];
+  const liquidityTokenAddress = computePairAddress({
+    factoryAddress: context.addresses.SWAPPI_FACTORY,
+    tokenA: token0,
+    tokenB: token1,
+    initCodeHash: context.addresses.INIT_CODE_HASH,
+  });
+  const reserve0 = CurrencyAmount.fromRawAmount(token0, reserve0Raw);
+  const reserve1 = CurrencyAmount.fromRawAmount(token1, reserve1Raw);
+
+  const pair = {
+    token0,
+    token1,
+    reserve0,
+    reserve1,
+    liquidityToken: {
+      chainId: context.chainId,
+      address: liquidityTokenAddress,
+      symbol: "SWAPPI-V2",
+      decimals: 18,
+    },
+    get chainId() {
+      return token0.chainId;
+    },
+    get token0Price() {
+      return new Price(token0, token1, reserve0.quotient, reserve1.quotient);
+    },
+    get token1Price() {
+      return new Price(token1, token0, reserve1.quotient, reserve0.quotient);
+    },
+    reserveOf(token) {
+      if (token.equals(token0)) return reserve0;
+      if (token.equals(token1)) return reserve1;
+      throw new Error("token not in pair");
+    },
+    priceOf(token) {
+      if (token.equals(token0)) return pair.token0Price;
+      if (token.equals(token1)) return pair.token1Price;
+      throw new Error("token not in pair");
+    },
+    involvesToken(token) {
+      return token.equals(token0) || token.equals(token1);
+    },
+  };
+  return pair;
+}
+
 export function createUniswapV2Client(context) {
   function v2UnsupportedError() {
-    return new Error(`Swappi V2 is not configured for ${context.network}; Pair.getAddress and V2 methods are unavailable on this network`);
+    return new Error(`Swappi V2 is not configured for ${context.network}; V2 methods are unavailable on this network`);
   }
 
   function assertV2Configured() {
@@ -27,22 +75,6 @@ export function createUniswapV2Client(context) {
   function swappiRouterV2Address() {
     assertV2Configured();
     return context.addresses.SWAPPI_ROUTER_V2;
-  }
-
-  // 仍保留全局覆写，但根据当前网络切换行为。
-  if (context.network === "mainnet") {
-    Pair.getAddress = function (token0Address, token1Address) {
-      return computePairAddress({
-        factoryAddress: swappiFactoryAddress(),
-        tokenA: token0Address,
-        tokenB: token1Address,
-        initCodeHash: context.addresses.INIT_CODE_HASH,
-      });
-    };
-  } else {
-    Pair.getAddress = function () {
-      throw v2UnsupportedError();
-    };
   }
 
   function swappiFactoryContract(signerOrProvider) {
@@ -169,11 +201,7 @@ export function createUniswapV2Client(context) {
     const pairContract = new ethers.Contract(pairAddress, PairABI, getResolvedProvider(context, provider));
     const reserves = await pairContract.getReserves();
     const [reserve0, reserve1] = reserves;
-    const [token0Sorted, token1Sorted] = token0.sortsBefore(token1) ? [token0, token1] : [token1, token0];
-    return new Pair(
-      CurrencyAmount.fromRawAmount(token0Sorted, reserve0.toString()),
-      CurrencyAmount.fromRawAmount(token1Sorted, reserve1.toString())
-    );
+    return createSwappiPair(context, token0, token1, reserve0.toString(), reserve1.toString());
   }
 
   async function getBestPath(token0, token1, amountIn, signerOrProvider = context.provider) {
@@ -208,7 +236,8 @@ export function createUniswapV2Client(context) {
   }
 
   return Object.freeze({
-    SwappiPair: Pair,
+    createSwappiPair: (tokenA, tokenB, reserve0Raw, reserve1Raw) =>
+      createSwappiPair(context, tokenA, tokenB, reserve0Raw, reserve1Raw),
     swappiFactoryContract,
     swappiRouterContract,
     getSwappiPairs,

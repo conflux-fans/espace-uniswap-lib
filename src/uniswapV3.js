@@ -25,6 +25,7 @@ import {
   UniswapV3PositionManagerABI,
 } from "./abis.js";
 import { deadline, erc20Contract, formatUnits } from "./utils.js";
+import { createSwappiV2PoolProvider } from "./swappiV2PoolProvider.js";
 import { parseUnits } from "viem";
 import {
   log,
@@ -90,7 +91,7 @@ export function createUniswapV3Client(context) {
   }
 
   async function getQuoteOutput(swapRoute, tokenIn, amountInRaw, provider = context.provider) {
-    const { calldata } = await SwapQuoter.quoteCallParameters(
+    const { calldata } = SwapQuoter.quoteCallParameters(
       swapRoute,
       CurrencyAmount.fromRawAmount(
         tokenIn,
@@ -324,6 +325,7 @@ export function createUniswapV3Client(context) {
     const router = new AlphaRouter({
       chainId: context.chainId,
       provider: context.provider,
+      v2PoolProvider: createSwappiV2PoolProvider(context),
     });
 
     const routeOptions = {
